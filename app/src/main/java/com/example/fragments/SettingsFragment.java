@@ -3,16 +3,20 @@ package com.example.fragments;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
 import com.example.R;
@@ -94,11 +98,11 @@ public class SettingsFragment extends Fragment {
 
         final String finalLogContent = logContent;
 
-        new AlertDialog.Builder(requireContext())
+        AlertDialog dialog = new AlertDialog.Builder(requireContext())
                 .setTitle("AirSignal Action Log")
                 .setMessage(finalLogContent)
                 .setPositiveButton("OK", null)
-                .setNegativeButton("Copy Log", (dialog, which) -> {
+                .setNegativeButton("Copy Log", (d, which) -> {
                     try {
                         ClipboardManager clipboard = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
                         ClipData clip = ClipData.newPlainText("AirSignal Action Log", finalLogContent);
@@ -110,11 +114,30 @@ public class SettingsFragment extends Fragment {
                         Toast.makeText(requireContext(), "Failed to copy log: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                     }
                 })
-                .setNeutralButton("Clear", (dialog, which) -> {
+                .setNeutralButton("Clear", (d, which) -> {
                     AirLogger.clearLogs();
                     Toast.makeText(requireContext(), "Logs cleared", Toast.LENGTH_SHORT).show();
                 })
-                .show();
+                .create();
+
+        dialog.show();
+
+        // Attach copy_all_24px icon directly to the Copy Log button in the dialog
+        try {
+            Button copyButton = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (copyButton != null) {
+                int copyIconId = getResources().getIdentifier("copy_all_24px", "drawable", requireContext().getPackageName());
+                if (copyIconId != 0) {
+                    Drawable icon = ContextCompat.getDrawable(requireContext(), copyIconId);
+                    if (icon != null) {
+                        copyButton.setCompoundDrawablesWithIntrinsicBounds(icon, null, null, null);
+                        copyButton.setCompoundDrawablePadding(dpToPx(6));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            AirLogger.e("SettingsFragment", "Failed to set copy icon on dialog button", e);
+        }
     }
 
     private void updateRoleStatuses() {
@@ -129,5 +152,14 @@ public class SettingsFragment extends Fragment {
     public void onResume() {
         super.onResume();
         updateRoleStatuses();
+    }
+
+    private int dpToPx(int dp) {
+        if (getContext() == null) return dp;
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                dp,
+                getResources().getDisplayMetrics()
+        );
     }
 }
