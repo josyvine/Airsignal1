@@ -89,7 +89,7 @@ public class SimManager {
                     AirLogger.e(TAG, "Failed to query SubscriptionManager for SIMs", e);
                 }
             } else {
-                AirLogger.w(TAG, "READ_PHONE_STATE permission not granted for SIM querying");
+                AirLogger.i(TAG, "READ_PHONE_STATE permission not granted for SIM querying");
             }
         }
 
