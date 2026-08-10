@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.R;
 import com.example.models.User;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.ViewHolder> {
@@ -23,8 +24,15 @@ public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.ViewHolder> {
     }
 
     public ChatAdapter(List<User> userList, OnChatClickListener listener) {
-        this.userList = userList;
+        this.userList = (userList != null) ? userList : new ArrayList<>();
         this.listener = listener;
+    }
+
+    public void updateUserList(List<User> newUsers) {
+        if (newUsers != null) {
+            this.userList = new ArrayList<>(newUsers);
+            notifyDataSetChanged();
+        }
     }
 
     @NonNull
@@ -37,21 +45,27 @@ public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.ViewHolder> {
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         User user = userList.get(position);
-        holder.tvName.setText(user.getName());
-        holder.tvLastMsg.setText("Tap to open SMS / Data conversation (" + user.getPhone() + ")");
-        holder.tvTime.setText("Now");
+        
+        if (user != null) {
+            String name = (user.getName() != null && !user.getName().isEmpty()) ? user.getName() : user.getPhone();
+            holder.tvName.setText(name);
+            holder.tvLastMsg.setText("Tap to open SMS / Data conversation (" + user.getPhone() + ")");
+            holder.tvTime.setText("Now");
 
-        holder.itemView.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (listener != null) listener.onChatClick(user);
-            }
-        });
+            holder.itemView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (listener != null) {
+                        listener.onChatClick(user);
+                    }
+                }
+            });
+        }
     }
 
     @Override
     public int getItemCount() {
-        return userList.size();
+        return (userList != null) ? userList.size() : 0;
     }
 
     public static class ViewHolder extends RecyclerView.ViewHolder {
