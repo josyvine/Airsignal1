@@ -38,7 +38,7 @@ public class SmsService extends Service {
             String action = intent.getAction();
             AirLogger.i(TAG, "SmsService onStartCommand action: " + action);
 
-            if (Intent.ACTION_RESPOND_VIA_MESSAGE.equals(action)) {
+            if (Telephony.Sms.Intents.ACTION_RESPOND_VIA_MESSAGE.equals(action)) {
                 handleRespondViaMessage(intent);
             } else if (ACTION_SEND_SMS.equals(action)) {
                 String recipient = intent.getStringExtra(EXTRA_RECIPIENT);
