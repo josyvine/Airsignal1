@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.telephony.SmsManager;
 import android.widget.Toast;
 
+import com.example.database.AppDatabase;
 import com.example.database.DatabaseHelper;
 import com.example.utils.AirLogger;
 
@@ -70,7 +71,20 @@ public class SmsStatusReceiver extends BroadcastReceiver {
             }
 
             if (messageId != -1) {
+                // 1. Update SQLite DatabaseHelper
                 DatabaseHelper.getInstance(context).updateMessageStatus(messageId, status);
+
+                // 2. Update Room AppDatabase
+                final String finalStatus = status;
+                new Thread(() -> {
+                    try {
+                        AppDatabase.getInstance(context).messageDao().updateStatus(messageId, finalStatus);
+                    } catch (Exception e) {
+                        AirLogger.e(TAG, "Failed updating status in Room AppDatabase", e);
+                    }
+                }).start();
+
+                // 3. Notify active Conversation UI to refresh live bubbles
                 notifyUiStatusUpdate(context, messageId, status, recipient);
             }
 
@@ -78,7 +92,19 @@ public class SmsStatusReceiver extends BroadcastReceiver {
             int resultCode = getResultCode();
             AirLogger.i(TAG, "SMS DELIVERED callback to " + recipient + " (msgId=" + messageId + "), resultCode=" + resultCode);
             if (messageId != -1 && resultCode == Activity.RESULT_OK) {
+                // 1. Update SQLite DatabaseHelper
                 DatabaseHelper.getInstance(context).updateMessageStatus(messageId, "DELIVERED");
+
+                // 2. Update Room AppDatabase
+                new Thread(() -> {
+                    try {
+                        AppDatabase.getInstance(context).messageDao().updateStatus(messageId, "DELIVERED");
+                    } catch (Exception e) {
+                        AirLogger.e(TAG, "Failed updating status in Room AppDatabase", e);
+                    }
+                }).start();
+
+                // 3. Notify active Conversation UI to refresh live bubbles
                 notifyUiStatusUpdate(context, messageId, "DELIVERED", recipient);
             }
         }
