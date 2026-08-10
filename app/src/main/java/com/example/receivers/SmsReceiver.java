@@ -15,7 +15,9 @@ import android.widget.Toast;
 import androidx.core.app.NotificationCompat;
 
 import com.example.activities.ConversationActivity;
+import com.example.database.AppDatabase;
 import com.example.database.DatabaseHelper;
+import com.example.database.MessageEntity;
 import com.example.database.TransferDatabase;
 import com.example.models.DataPacket;
 import com.example.models.Message;
@@ -27,14 +29,19 @@ public class SmsReceiver extends BroadcastReceiver {
     private static final String TAG = "SmsReceiver";
     private static final String NOTIFICATION_CHANNEL_ID = "sms_incoming_channel";
 
+    // Deduplication tracking to prevent double notifications & double database entries
+    private static String lastMessageKey = "";
+    private static long lastMessageTime = 0;
+
     @Override
     public void onReceive(Context context, Intent intent) {
         if (intent == null || intent.getAction() == null) return;
 
-        AirLogger.i(TAG, "SMS onReceive action: " + intent.getAction());
+        String action = intent.getAction();
+        AirLogger.i(TAG, "SMS onReceive action: " + action);
 
-        if (Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(intent.getAction()) ||
-                Telephony.Sms.Intents.SMS_DELIVER_ACTION.equals(intent.getAction())) {
+        if (Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(action) ||
+                Telephony.Sms.Intents.SMS_DELIVER_ACTION.equals(action)) {
 
             SmsMessage[] messages = Telephony.Sms.Intents.getMessagesFromIntent(intent);
             if (messages == null || messages.length == 0) {
@@ -61,6 +68,17 @@ public class SmsReceiver extends BroadcastReceiver {
             }
 
             String body = bodyBuilder.toString();
+
+            // Deduplicate simultaneous SMS_DELIVER and SMS_RECEIVED broadcasts (within 3 seconds)
+            String currentKey = sender + "|" + body;
+            long now = System.currentTimeMillis();
+            if (currentKey.equals(lastMessageKey) && (now - lastMessageTime < 3000)) {
+                AirLogger.i(TAG, "Duplicate SMS broadcast ignored for sender: " + sender);
+                return;
+            }
+            lastMessageKey = currentKey;
+            lastMessageTime = now;
+
             AirLogger.i(TAG, "Incoming SMS from " + sender + " (len=" + body.length() + ")");
 
             if (body.startsWith("AIR_START|")) {
@@ -73,19 +91,39 @@ public class SmsReceiver extends BroadcastReceiver {
                 }
             } else {
                 // NORMAL CHAT MODE
+                // 1. Save to SQLite DatabaseHelper
                 Message msg = new Message(0, sender, "me", body, timestamp, "SMS", "DELIVERED");
                 long id = DatabaseHelper.getInstance(context).insertMessage(msg);
-                AirLogger.i(TAG, "Received regular SMS from " + sender + ", saved to DB with msgId=" + id);
+                AirLogger.i(TAG, "Received regular SMS from " + sender + ", saved to SQLite DB with msgId=" + id);
 
+                // 2. Save to Room AppDatabase
+                final String finalSender = sender;
+                final String finalBody = body;
+                final long finalTimestamp = timestamp;
+                final long finalId = id;
+
+                new Thread(() -> {
+                    try {
+                        MessageEntity entity = new MessageEntity(finalSender, "me", finalBody, finalTimestamp, "SMS", "DELIVERED", -1);
+                        entity.isRead = false;
+                        AppDatabase.getInstance(context).messageDao().insertMessage(entity);
+                        AirLogger.i(TAG, "Saved incoming SMS to Room AppDatabase for " + finalSender);
+                    } catch (Exception e) {
+                        AirLogger.e(TAG, "Failed saving incoming SMS to Room AppDatabase", e);
+                    }
+                }).start();
+
+                // 3. Write to System Inbox & Show Notification
                 writeToSystemInbox(context, sender, body, timestamp);
                 showSmsNotification(context, sender, body);
 
+                // 4. Broadcast local refresh intent to active UI screens
                 try {
                     Intent notifyIntent = new Intent("com.example.ACTION_SMS_RECEIVED");
                     notifyIntent.setPackage(context.getPackageName());
                     notifyIntent.putExtra("sender", sender);
                     notifyIntent.putExtra("body", body);
-                    notifyIntent.putExtra("message_id", id);
+                    notifyIntent.putExtra("message_id", finalId);
                     context.sendBroadcast(notifyIntent);
                 } catch (Exception ignored) {
                 }
