@@ -2,6 +2,7 @@ package com.example;
 
 import android.Manifest;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -14,6 +15,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
+import com.example.activities.ConversationActivity;
 import com.example.fragments.CallsFragment;
 import com.example.fragments.ChatFragment;
 import com.example.fragments.ContactsFragment;
@@ -46,6 +48,8 @@ public class MainActivity extends AppCompatActivity {
 
         checkAndRequestPermissions();
         checkDefaultRoles();
+
+        handleIncomingRecipientIntent(getIntent());
 
         if (savedInstanceState == null) {
             ChatFragment chatFragment = new ChatFragment();
@@ -82,6 +86,26 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
         });
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        AirLogger.i(TAG, "MainActivity onNewIntent called");
+        handleIncomingRecipientIntent(intent);
+    }
+
+    private void handleIncomingRecipientIntent(Intent intent) {
+        if (intent != null && intent.hasExtra("target_recipient")) {
+            String targetRecipient = intent.getStringExtra("target_recipient");
+            if (targetRecipient != null && !targetRecipient.trim().isEmpty()) {
+                AirLogger.i(TAG, "Navigating to ConversationActivity for recipient: " + targetRecipient);
+                Intent conversationIntent = new Intent(this, ConversationActivity.class);
+                conversationIntent.putExtra("target_recipient", targetRecipient);
+                startActivity(conversationIntent);
+            }
+        }
     }
 
     private void checkDefaultRoles() {
@@ -134,6 +158,7 @@ public class MainActivity extends AppCompatActivity {
         permissions.add(Manifest.permission.CALL_PHONE);
         permissions.add(Manifest.permission.RECORD_AUDIO);
         permissions.add(Manifest.permission.READ_CONTACTS);
+        permissions.add(Manifest.permission.READ_PHONE_STATE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS);
