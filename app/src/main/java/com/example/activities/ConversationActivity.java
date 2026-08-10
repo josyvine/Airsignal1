@@ -21,14 +21,15 @@ import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.adapters.MessageAdapter;
+import com.example.database.AppDatabase;
 import com.example.database.DatabaseHelper;
+import com.example.database.MessageEntity;
 import com.example.models.Message;
 import com.example.receivers.SmsStatusReceiver;
 import com.example.services.SmsService;
@@ -250,19 +251,38 @@ public class ConversationActivity extends AppCompatActivity {
     }
 
     private void loadMessages() {
-        try {
-            List<Message> loadedMessages = DatabaseHelper.getInstance(this).getMessagesForConversation(recipientAddress);
-            if (loadedMessages != null) {
-                this.messageList = loadedMessages;
-                messageAdapter.updateMessages(messageList);
-
-                if (messageList.size() > 0) {
-                    recyclerView.scrollToPosition(messageList.size() - 1);
+        new Thread(() -> {
+            try {
+                AppDatabase db = AppDatabase.getInstance(ConversationActivity.this);
+                List<MessageEntity> entities = db.messageDao().getMessagesForConversation(recipientAddress);
+                List<Message> list = new ArrayList<>();
+                
+                if (entities != null) {
+                    for (MessageEntity entity : entities) {
+                        list.add(new Message(
+                                entity.id,
+                                entity.sender,
+                                entity.recipient,
+                                entity.body,
+                                entity.timestamp,
+                                entity.type,
+                                entity.status
+                        ));
+                    }
                 }
+
+                runOnUiThread(() -> {
+                    this.messageList = list;
+                    messageAdapter.updateMessages(messageList);
+
+                    if (messageList.size() > 0) {
+                        recyclerView.scrollToPosition(messageList.size() - 1);
+                    }
+                });
+            } catch (Exception e) {
+                AirLogger.e(TAG, "Failed loading messages for conversation: " + recipientAddress, e);
             }
-        } catch (Exception e) {
-            AirLogger.e(TAG, "Failed loading messages for conversation: " + recipientAddress, e);
-        }
+        }).start();
     }
 
     private void sendMessage() {
@@ -277,9 +297,20 @@ public class ConversationActivity extends AppCompatActivity {
 
         AirLogger.i(TAG, "Sending message to " + recipientAddress + " via SIM subId=" + subId);
 
-        // Insert message locally
+        // Insert message locally into SQLite DatabaseHelper
         Message outgoingMsg = new Message(0, "me", recipientAddress, textBody, System.currentTimeMillis(), "SMS", "PENDING");
         long messageId = DatabaseHelper.getInstance(this).insertMessage(outgoingMsg);
+
+        // Also insert message locally into Room AppDatabase
+        new Thread(() -> {
+            try {
+                AppDatabase.getInstance(ConversationActivity.this).messageDao().insertMessage(
+                        new MessageEntity(messageId, "me", recipientAddress, textBody, System.currentTimeMillis(), "SMS", "PENDING", subId, true)
+                );
+            } catch (Exception e) {
+                AirLogger.e(TAG, "Error caching message to Room DB", e);
+            }
+        }).start();
 
         // Clear input box
         etInput.setText("");
