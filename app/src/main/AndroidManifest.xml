@@ -63,6 +63,25 @@
             </intent-filter>
         </activity>
 
+        <!-- Modern Chat Thread Window Activity -->
+        <activity
+            android:name=".activities.ConversationActivity"
+            android:exported="true"
+            android:label="AirSignal Chat"
+            android:theme="@style/Theme.AirSignal"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SENDTO" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+        </activity>
+
         <!-- Compose SMS Activity for Default SMS Dispatch -->
         <activity
             android:name=".activities.ComposeSmsActivity"
