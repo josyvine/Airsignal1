@@ -151,7 +151,7 @@ public class ConversationActivity extends AppCompatActivity {
                 1.0f
         );
 
-        // 3. FOOTER INPUT BAR WITH SIM SELECTOR DROPDOWN
+        // 3. FOOTER INPUT BAR WITH COMPACT SIM SELECTOR ICON
         LinearLayout footerLayout = new LinearLayout(this);
         footerLayout.setOrientation(LinearLayout.HORIZONTAL);
         footerLayout.setGravity(Gravity.CENTER_VERTICAL);
@@ -163,7 +163,7 @@ public class ConversationActivity extends AppCompatActivity {
         inputContainer.setOrientation(LinearLayout.HORIZONTAL);
         inputContainer.setGravity(Gravity.CENTER_VERTICAL);
         inputContainer.setBackgroundColor(Color.parseColor("#334155"));
-        inputContainer.setPadding(dpToPx(12), dpToPx(4), dpToPx(4), dpToPx(4));
+        inputContainer.setPadding(dpToPx(10), dpToPx(4), dpToPx(6), dpToPx(4));
 
         LinearLayout.LayoutParams containerParams = new LinearLayout.LayoutParams(
                 0,
@@ -171,7 +171,7 @@ public class ConversationActivity extends AppCompatActivity {
                 1.0f
         );
 
-        // Text Input Field
+        // Text Input Field (Takes 85%+ width)
         etInput = new EditText(this);
         etInput.setHint("Type a message...");
         etInput.setHintTextColor(Color.parseColor("#94A3B8"));
@@ -187,16 +187,16 @@ public class ConversationActivity extends AppCompatActivity {
                 1.0f
         );
 
-        // SIM Selector Dropdown (placed inside text box on extreme right)
+        // Tiny Compact SIM Selector Icon Dropdown (Placed on the extreme right inside text box)
         spinnerSimSelector = new Spinner(this);
-        spinnerSimSelector.setBackgroundColor(Color.parseColor("#0EA5E9"));
-        spinnerSimSelector.setPadding(dpToPx(6), dpToPx(4), dpToPx(6), dpToPx(4));
+        spinnerSimSelector.setBackgroundColor(Color.parseColor("#0284C7"));
+        spinnerSimSelector.setPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
 
         LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        spinnerParams.setMarginStart(dpToPx(6));
+        spinnerParams.setMarginStart(dpToPx(4));
 
         inputContainer.addView(etInput, inputParams);
         inputContainer.addView(spinnerSimSelector, spinnerParams);
@@ -239,30 +239,51 @@ public class ConversationActivity extends AppCompatActivity {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 TextView view = (TextView) super.getView(position, convertView, parent);
+                SimManager.SimInfo info = getItem(position);
+
+                // COLLAPSED VIEW (Tiny SIM Icon + Slot # inside text bar)
+                if (info != null) {
+                    view.setText(String.valueOf(info.getSimSlotIndex() + 1));
+                } else {
+                    view.setText("1");
+                }
                 view.setTextColor(Color.WHITE);
                 view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                 view.setTypeface(null, Typeface.BOLD);
+                view.setGravity(Gravity.CENTER);
+
                 try {
                     int simDrawableId = getResources().getIdentifier("sim_card_24px", "drawable", getPackageName());
                     if (simDrawableId != 0) {
                         view.setCompoundDrawablesWithIntrinsicBounds(simDrawableId, 0, 0, 0);
-                        view.setCompoundDrawablePadding(dpToPx(4));
+                        view.setCompoundDrawablePadding(dpToPx(2));
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 return view;
             }
 
             @Override
             public View getDropDownView(int position, View convertView, ViewGroup parent) {
                 TextView view = (TextView) super.getDropDownView(position, convertView, parent);
+                SimManager.SimInfo info = getItem(position);
+
+                // EXPANDED DROPDOWN VIEW (Full Network/Carrier Name)
+                if (info != null) {
+                    view.setText(info.getDisplayName());
+                }
                 view.setTextColor(Color.BLACK);
+                view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+                view.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12));
+
                 try {
                     int simDrawableId = getResources().getIdentifier("sim_card_24px", "drawable", getPackageName());
                     if (simDrawableId != 0) {
                         view.setCompoundDrawablesWithIntrinsicBounds(simDrawableId, 0, 0, 0);
-                        view.setCompoundDrawablePadding(dpToPx(4));
+                        view.setCompoundDrawablePadding(dpToPx(8));
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 return view;
             }
         };
