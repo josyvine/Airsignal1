@@ -9,13 +9,22 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Color;
+import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.ContactsContract;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -28,7 +37,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.R;
 import com.example.activities.ConversationActivity;
 import com.example.adapters.ChatAdapter;
-import com.example.database.AppDatabase;
 import com.example.database.DatabaseHelper;
 import com.example.models.Message;
 import com.example.models.User;
@@ -352,22 +360,123 @@ public class ChatFragment extends Fragment {
                         return;
                     }
 
-                    String[] names = new String[finalContacts.size()];
-                    for (int i = 0; i < finalContacts.size(); i++) {
-                        User u = finalContacts.get(i);
-                        names[i] = u.getName() + " (" + u.getPhone() + ")";
+                    // Build Searchable Contact Picker Dialog Layout Programmatically
+                    LinearLayout containerLayout = new LinearLayout(requireContext());
+                    containerLayout.setOrientation(LinearLayout.VERTICAL);
+                    containerLayout.setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16));
+                    containerLayout.setBackgroundColor(Color.parseColor("#1E293B"));
+
+                    // Title Header
+                    TextView tvTitle = new TextView(requireContext());
+                    tvTitle.setText("Select Contact");
+                    tvTitle.setTextColor(Color.WHITE);
+                    tvTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+                    tvTitle.setTypeface(null, Typeface.BOLD);
+                    tvTitle.setPadding(0, 0, 0, dpToPx(12));
+
+                    // Search EditText with person_search_24px icon
+                    EditText etSearch = new EditText(requireContext());
+                    etSearch.setHint("Search contact name or number...");
+                    etSearch.setHintTextColor(Color.parseColor("#94A3B8"));
+                    etSearch.setTextColor(Color.WHITE);
+                    etSearch.setBackgroundColor(Color.parseColor("#334155"));
+                    etSearch.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+                    etSearch.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+
+                    try {
+                        int searchDrawableId = getResources().getIdentifier("person_search_24px", "drawable", requireContext().getPackageName());
+                        if (searchDrawableId != 0) {
+                            etSearch.setCompoundDrawablesWithIntrinsicBounds(searchDrawableId, 0, 0, 0);
+                            etSearch.setCompoundDrawablePadding(dpToPx(8));
+                        }
+                    } catch (Exception ignored) {
                     }
 
-                    new AlertDialog.Builder(requireContext())
-                            .setTitle("Select Contact")
-                            .setItems(names, (dialog, which) -> {
-                                User selected = finalContacts.get(which);
-                                targetEditText.setText(selected.getPhone());
-                            })
+                    // Contacts List Adapter & View
+                    List<User> displayList = new ArrayList<>(finalContacts);
+                    List<String> formattedNames = new ArrayList<>();
+                    for (User u : displayList) {
+                        formattedNames.add(u.getName() + " (" + u.getPhone() + ")");
+                    }
+
+                    ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+                            requireContext(),
+                            android.R.layout.simple_list_item_1,
+                            formattedNames
+                    ) {
+                        @NonNull
+                        @Override
+                        public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
+                            TextView view = (TextView) super.getView(position, convertView, parent);
+                            view.setTextColor(Color.WHITE);
+                            view.setPadding(dpToPx(8), dpToPx(12), dpToPx(8), dpToPx(12));
+                            return view;
+                        }
+                    };
+
+                    ListView listView = new ListView(requireContext());
+                    listView.setAdapter(adapter);
+                    LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            dpToPx(320)
+                    );
+                    listParams.setMargins(0, dpToPx(12), 0, 0);
+
+                    containerLayout.addView(tvTitle);
+                    containerLayout.addView(etSearch);
+                    containerLayout.addView(listView, listParams);
+
+                    AlertDialog dialog = new AlertDialog.Builder(requireContext())
+                            .setView(containerLayout)
                             .setNegativeButton("Cancel", null)
-                            .show();
+                            .create();
+
+                    // Search Filtering Listener
+                    etSearch.addTextChangedListener(new TextWatcher() {
+                        @Override
+                        public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                        @Override
+                        public void onTextChanged(CharSequence s, int start, int before, int count) {
+                            String query = s.toString().toLowerCase().trim();
+                            displayList.clear();
+                            formattedNames.clear();
+
+                            for (User u : finalContacts) {
+                                if (query.isEmpty() ||
+                                        (u.getName() != null && u.getName().toLowerCase().contains(query)) ||
+                                        (u.getPhone() != null && u.getPhone().contains(query))) {
+                                    displayList.add(u);
+                                    formattedNames.add(u.getName() + " (" + u.getPhone() + ")");
+                                }
+                            }
+                            adapter.notifyDataSetChanged();
+                        }
+
+                        @Override
+                        public void afterTextChanged(Editable s) {}
+                    });
+
+                    listView.setOnItemClickListener((parent, view, position, id) -> {
+                        if (position >= 0 && position < displayList.size()) {
+                            User selected = displayList.get(position);
+                            targetEditText.setText(selected.getPhone());
+                        }
+                        dialog.dismiss();
+                    });
+
+                    dialog.show();
                 });
             }
         });
+    }
+
+    private int dpToPx(int dp) {
+        if (getContext() == null) return dp;
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                dp,
+                getResources().getDisplayMetrics()
+        );
     }
 }
