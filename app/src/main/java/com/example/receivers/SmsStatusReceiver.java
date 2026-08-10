@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.telephony.SmsManager;
+import android.widget.Toast;
 
 import com.example.database.DatabaseHelper;
 import com.example.utils.AirLogger;
@@ -12,6 +13,7 @@ import com.example.utils.AirLogger;
 public class SmsStatusReceiver extends BroadcastReceiver {
 
     private static final String TAG = "SmsStatusReceiver";
+    public static final String ACTION_MESSAGE_STATUS_UPDATED = "com.example.ACTION_MESSAGE_STATUS_UPDATED";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -62,13 +64,14 @@ public class SmsStatusReceiver extends BroadcastReceiver {
             } else {
                 AirLogger.e(TAG, "SMS SEND FAILED to " + recipient + " (msgId=" + messageId + "). Reason: " + errorReason);
                 try {
-                    android.widget.Toast.makeText(context, "SMS Send Failed: " + errorReason, android.widget.Toast.LENGTH_LONG).show();
+                    Toast.makeText(context, "SMS Send Failed: " + errorReason, Toast.LENGTH_LONG).show();
                 } catch (Exception ignored) {
                 }
             }
 
             if (messageId != -1) {
                 DatabaseHelper.getInstance(context).updateMessageStatus(messageId, status);
+                notifyUiStatusUpdate(context, messageId, status, recipient);
             }
 
         } else if ("com.example.ACTION_SMS_DELIVERED".equals(action)) {
@@ -76,7 +79,21 @@ public class SmsStatusReceiver extends BroadcastReceiver {
             AirLogger.i(TAG, "SMS DELIVERED callback to " + recipient + " (msgId=" + messageId + "), resultCode=" + resultCode);
             if (messageId != -1 && resultCode == Activity.RESULT_OK) {
                 DatabaseHelper.getInstance(context).updateMessageStatus(messageId, "DELIVERED");
+                notifyUiStatusUpdate(context, messageId, "DELIVERED", recipient);
             }
+        }
+    }
+
+    private void notifyUiStatusUpdate(Context context, long messageId, String status, String recipient) {
+        try {
+            Intent updateIntent = new Intent(ACTION_MESSAGE_STATUS_UPDATED);
+            updateIntent.setPackage(context.getPackageName());
+            updateIntent.putExtra("message_id", messageId);
+            updateIntent.putExtra("status", status);
+            updateIntent.putExtra("recipient", recipient);
+            context.sendBroadcast(updateIntent);
+        } catch (Exception e) {
+            AirLogger.e(TAG, "Failed to broadcast status update intent", e);
         }
     }
 }
