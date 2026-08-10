@@ -14,7 +14,7 @@ import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
 
-import com.example.MainActivity;
+import com.example.activities.ConversationActivity;
 import com.example.database.DatabaseHelper;
 import com.example.database.TransferDatabase;
 import com.example.models.DataPacket;
@@ -83,6 +83,9 @@ public class SmsReceiver extends BroadcastReceiver {
                 try {
                     Intent notifyIntent = new Intent("com.example.ACTION_SMS_RECEIVED");
                     notifyIntent.setPackage(context.getPackageName());
+                    notifyIntent.putExtra("sender", sender);
+                    notifyIntent.putExtra("body", body);
+                    notifyIntent.putExtra("message_id", id);
                     context.sendBroadcast(notifyIntent);
                 } catch (Exception ignored) {
                 }
@@ -122,7 +125,7 @@ public class SmsReceiver extends BroadcastReceiver {
                 manager.createNotificationChannel(channel);
             }
 
-            Intent targetIntent = new Intent(context, MainActivity.class);
+            Intent targetIntent = new Intent(context, ConversationActivity.class);
             targetIntent.putExtra("target_recipient", sender);
             targetIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
