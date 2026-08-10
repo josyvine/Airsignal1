@@ -2,6 +2,7 @@ package com.example.fragments;
 
 import android.Manifest;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -31,6 +32,7 @@ import com.example.adapters.ContactsAdapter;
 import com.example.call.CallManager;
 import com.example.database.DatabaseHelper;
 import com.example.models.User;
+import com.example.utils.AirLogger;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -69,14 +71,18 @@ public class ContactsFragment extends Fragment {
         adapter = new ContactsAdapter(filteredContactsList, new ContactsAdapter.OnContactActionListener() {
             @Override
             public void onChatAction(User user) {
-                Intent intent = new Intent(requireContext(), MainActivity.class);
-                intent.putExtra("target_recipient", user.getPhone());
-                startActivity(intent);
+                if (getContext() != null) {
+                    Intent intent = new Intent(requireContext(), MainActivity.class);
+                    intent.putExtra("target_recipient", user.getPhone());
+                    startActivity(intent);
+                }
             }
 
             @Override
             public void onCallAction(User user) {
-                CallManager.placeCall(requireContext(), user.getPhone());
+                if (getContext() != null) {
+                    CallManager.placeCall(requireContext(), user.getPhone());
+                }
             }
         });
         rvContacts.setAdapter(adapter);
@@ -109,7 +115,7 @@ public class ContactsFragment extends Fragment {
     }
 
     private void loadContacts() {
-        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+        if (getContext() != null && ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
             bannerPermission.setVisibility(View.GONE);
             fetchDeviceContactsAsync();
         } else {
@@ -119,10 +125,15 @@ public class ContactsFragment extends Fragment {
     }
 
     private void fetchDeviceContactsAsync() {
+        if (getContext() == null) return;
+
+        // Safely capture Application Context to prevent requireContext() IllegalStateException on background threads
+        final Context appContext = requireContext().getApplicationContext();
+
         tvContactsCount.setText("Reading device contacts...");
         Executors.newSingleThreadExecutor().execute(() -> {
             List<User> deviceContacts = new ArrayList<>();
-            ContentResolver resolver = requireContext().getContentResolver();
+            ContentResolver resolver = appContext.getContentResolver();
             Cursor cursor = null;
             try {
                 cursor = resolver.query(
@@ -158,27 +169,32 @@ public class ContactsFragment extends Fragment {
                     }
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                AirLogger.e("ContactsFragment", "Error fetching device contacts", e);
             } finally {
                 if (cursor != null) cursor.close();
             }
 
-            List<User> dbUsers = dbHelper.getAllUsers();
-            for (User u : dbUsers) {
-                boolean exists = false;
-                for (User dc : deviceContacts) {
-                    if (dc.getPhone().replaceAll("[^0-9]", "").equals(u.getPhone().replaceAll("[^0-9]", ""))) {
-                        exists = true;
-                        break;
+            List<User> dbUsers = DatabaseHelper.getInstance(appContext).getAllUsers();
+            if (dbUsers != null) {
+                for (User u : dbUsers) {
+                    if (u == null || u.getPhone() == null) continue;
+                    boolean exists = false;
+                    for (User dc : deviceContacts) {
+                        if (dc != null && dc.getPhone() != null &&
+                                dc.getPhone().replaceAll("[^0-9]", "").equals(u.getPhone().replaceAll("[^0-9]", ""))) {
+                            exists = true;
+                            break;
+                        }
                     }
-                }
-                if (!exists) {
-                    deviceContacts.add(u);
+                    if (!exists) {
+                        deviceContacts.add(u);
+                    }
                 }
             }
 
             if (getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
+                    if (!isAdded()) return;
                     allContactsList.clear();
                     allContactsList.addAll(deviceContacts);
                     filterContacts(etSearchContacts.getText().toString());
@@ -190,7 +206,10 @@ public class ContactsFragment extends Fragment {
 
     private void loadDatabaseSeedContacts() {
         allContactsList.clear();
-        allContactsList.addAll(dbHelper.getAllUsers());
+        List<User> users = dbHelper.getAllUsers();
+        if (users != null) {
+            allContactsList.addAll(users);
+        }
         filterContacts(etSearchContacts.getText().toString());
         tvContactsCount.setText("Showing " + allContactsList.size() + " sample peers (Grant permission for device contacts)");
     }
@@ -202,12 +221,16 @@ public class ContactsFragment extends Fragment {
         } else {
             String lower = query.toLowerCase().trim();
             for (User u : allContactsList) {
-                if (u.getName().toLowerCase().contains(lower) || u.getPhone().contains(lower)) {
-                    filteredContactsList.add(u);
+                if (u != null && u.getName() != null && u.getPhone() != null) {
+                    if (u.getName().toLowerCase().contains(lower) || u.getPhone().contains(lower)) {
+                        filteredContactsList.add(u);
+                    }
                 }
             }
         }
-        adapter.notifyDataSetChanged();
+        if (adapter != null) {
+            adapter.notifyDataSetChanged();
+        }
     }
 
     @Override
@@ -217,7 +240,9 @@ public class ContactsFragment extends Fragment {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 loadContacts();
             } else {
-                Toast.makeText(requireContext(), "Permission denied. Showing default contacts.", Toast.LENGTH_SHORT).show();
+                if (getContext() != null) {
+                    Toast.makeText(requireContext(), "Permission denied. Showing default contacts.", Toast.LENGTH_SHORT).show();
+                }
             }
         }
     }
