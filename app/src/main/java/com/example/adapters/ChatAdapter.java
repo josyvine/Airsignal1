@@ -45,11 +45,13 @@ public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.ViewHolder> {
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         User user = userList.get(position);
-        
+
         if (user != null) {
-            String name = (user.getName() != null && !user.getName().isEmpty()) ? user.getName() : user.getPhone();
+            String name = (user.getName() != null && !user.getName().trim().isEmpty()) ? user.getName() : user.getPhone();
             holder.tvName.setText(name);
-            holder.tvLastMsg.setText("Tap to open SMS / Data conversation (" + user.getPhone() + ")");
+
+            String phoneLabel = (user.getPhone() != null && !user.getPhone().trim().isEmpty()) ? user.getPhone() : "";
+            holder.tvLastMsg.setText("Tap to open SMS / Data conversation (" + phoneLabel + ")");
             holder.tvTime.setText("Now");
 
             holder.itemView.setOnClickListener(new View.OnClickListener() {
