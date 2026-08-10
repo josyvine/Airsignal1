@@ -37,6 +37,7 @@ import com.example.utils.AirLogger;
 import com.example.utils.SimManager;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class ConversationActivity extends AppCompatActivity {
@@ -186,7 +187,7 @@ public class ConversationActivity extends AppCompatActivity {
                 1.0f
         );
 
-        // SIM Selector Dropdown (placed inside text box on the extreme right)
+        // SIM Selector Dropdown (placed inside text box on extreme right)
         spinnerSimSelector = new Spinner(this);
         spinnerSimSelector.setBackgroundColor(Color.parseColor("#0EA5E9"));
         spinnerSimSelector.setPadding(dpToPx(6), dpToPx(4), dpToPx(6), dpToPx(4));
@@ -200,9 +201,14 @@ public class ConversationActivity extends AppCompatActivity {
         inputContainer.addView(etInput, inputParams);
         inputContainer.addView(spinnerSimSelector, spinnerParams);
 
-        // Send Button
+        // Send Button with send_24px Vector Icon
         btnSend = new ImageButton(this);
-        btnSend.setImageResource(android.R.drawable.ic_menu_send);
+        int sendDrawableId = getResources().getIdentifier("send_24px", "drawable", getPackageName());
+        if (sendDrawableId != 0) {
+            btnSend.setImageResource(sendDrawableId);
+        } else {
+            btnSend.setImageResource(android.R.drawable.ic_menu_send);
+        }
         btnSend.setColorFilter(Color.WHITE);
         btnSend.setBackgroundColor(Color.parseColor("#0284C7"));
         btnSend.setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10));
@@ -236,6 +242,13 @@ public class ConversationActivity extends AppCompatActivity {
                 view.setTextColor(Color.WHITE);
                 view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                 view.setTypeface(null, Typeface.BOLD);
+                try {
+                    int simDrawableId = getResources().getIdentifier("sim_card_24px", "drawable", getPackageName());
+                    if (simDrawableId != 0) {
+                        view.setCompoundDrawablesWithIntrinsicBounds(simDrawableId, 0, 0, 0);
+                        view.setCompoundDrawablePadding(dpToPx(4));
+                    }
+                } catch (Exception ignored) {}
                 return view;
             }
 
@@ -243,6 +256,13 @@ public class ConversationActivity extends AppCompatActivity {
             public View getDropDownView(int position, View convertView, ViewGroup parent) {
                 TextView view = (TextView) super.getDropDownView(position, convertView, parent);
                 view.setTextColor(Color.BLACK);
+                try {
+                    int simDrawableId = getResources().getIdentifier("sim_card_24px", "drawable", getPackageName());
+                    if (simDrawableId != 0) {
+                        view.setCompoundDrawablesWithIntrinsicBounds(simDrawableId, 0, 0, 0);
+                        view.setCompoundDrawablePadding(dpToPx(4));
+                    }
+                } catch (Exception ignored) {}
                 return view;
             }
         };
@@ -253,26 +273,60 @@ public class ConversationActivity extends AppCompatActivity {
     private void loadMessages() {
         new Thread(() -> {
             try {
-                AppDatabase db = AppDatabase.getInstance(ConversationActivity.this);
-                List<MessageEntity> entities = db.messageDao().getMessagesForConversation(recipientAddress);
-                List<Message> list = new ArrayList<>();
-                
-                if (entities != null) {
-                    for (MessageEntity entity : entities) {
-                        list.add(new Message(
-                                entity.id,
-                                entity.sender,
-                                entity.recipient,
-                                entity.body,
-                                entity.timestamp,
-                                entity.type,
-                                entity.status
-                        ));
+                List<Message> filteredMessages = new ArrayList<>();
+
+                // 1. Fetch from DatabaseHelper
+                List<Message> helperMsgs = DatabaseHelper.getInstance(ConversationActivity.this).getAllMessages();
+                if (helperMsgs != null) {
+                    for (Message m : helperMsgs) {
+                        if (m != null && m.getSender() != null && m.getReceiver() != null) {
+                            String cleanRecipient = cleanNumber(recipientAddress);
+                            String cleanSender = cleanNumber(m.getSender());
+                            String cleanReceiver = cleanNumber(m.getReceiver());
+
+                            if (cleanSender.equals(cleanRecipient) || cleanReceiver.equals(cleanRecipient) ||
+                                    recipientAddress.equalsIgnoreCase(m.getSender()) ||
+                                    recipientAddress.equalsIgnoreCase(m.getReceiver())) {
+                                filteredMessages.add(m);
+                            }
+                        }
                     }
                 }
 
+                // 2. Fetch from Room AppDatabase
+                try {
+                    AppDatabase db = AppDatabase.getInstance(ConversationActivity.this);
+                    List<MessageEntity> entities = db.messageDao().getMessagesForConversation(recipientAddress);
+                    if (entities != null) {
+                        for (MessageEntity entity : entities) {
+                            boolean exists = false;
+                            for (Message existing : filteredMessages) {
+                                if (existing.getTimestamp() == entity.timestamp && existing.getMessage().equals(entity.body)) {
+                                    exists = true;
+                                    break;
+                                }
+                            }
+                            if (!exists) {
+                                filteredMessages.add(new Message(
+                                        entity.id,
+                                        entity.sender,
+                                        entity.recipient,
+                                        entity.body,
+                                        entity.timestamp,
+                                        entity.type,
+                                        entity.status
+                                ));
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+
+                // Sort chronological
+                Collections.sort(filteredMessages, (m1, m2) -> Long.compare(m1.getTimestamp(), m2.getTimestamp()));
+
                 runOnUiThread(() -> {
-                    this.messageList = list;
+                    this.messageList = filteredMessages;
                     messageAdapter.updateMessages(messageList);
 
                     if (messageList.size() > 0) {
@@ -283,6 +337,15 @@ public class ConversationActivity extends AppCompatActivity {
                 AirLogger.e(TAG, "Failed loading messages for conversation: " + recipientAddress, e);
             }
         }).start();
+    }
+
+    private String cleanNumber(String raw) {
+        if (raw == null) return "";
+        String cleaned = raw.replaceAll("[^0-9]", "");
+        if (cleaned.length() > 10) {
+            cleaned = cleaned.substring(cleaned.length() - 10);
+        }
+        return cleaned;
     }
 
     private void sendMessage() {
