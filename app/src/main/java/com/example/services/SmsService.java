@@ -21,6 +21,7 @@ import java.util.ArrayList;
 public class SmsService extends Service {
 
     private static final String TAG = "SmsService";
+    public static final String ACTION_RESPOND_VIA_MESSAGE = "android.intent.action.RESPOND_VIA_MESSAGE";
     public static final String ACTION_SEND_SMS = "com.example.services.ACTION_SEND_SMS";
     public static final String EXTRA_RECIPIENT = "extra_recipient";
     public static final String EXTRA_MESSAGE = "extra_message";
@@ -38,7 +39,7 @@ public class SmsService extends Service {
             String action = intent.getAction();
             AirLogger.i(TAG, "SmsService onStartCommand action: " + action);
 
-            if (Telephony.Sms.Intents.ACTION_RESPOND_VIA_MESSAGE.equals(action)) {
+            if (ACTION_RESPOND_VIA_MESSAGE.equals(action)) {
                 handleRespondViaMessage(intent);
             } else if (ACTION_SEND_SMS.equals(action)) {
                 String recipient = intent.getStringExtra(EXTRA_RECIPIENT);
