@@ -1,5 +1,8 @@
 package com.example.fragments;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -9,9 +12,11 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 
 import com.example.R;
+import com.example.utils.AirLogger;
 import com.example.utils.SmsRoleManager;
 import com.google.android.material.slider.Slider;
 
@@ -73,7 +78,7 @@ public class SettingsFragment extends Fragment {
         view.findViewById(R.id.btnClearAirLogs).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                com.example.utils.AirLogger.clearLogs();
+                AirLogger.clearLogs();
                 Toast.makeText(requireContext(), "AirLog file cleared", Toast.LENGTH_SHORT).show();
             }
         });
@@ -82,17 +87,31 @@ public class SettingsFragment extends Fragment {
     }
 
     private void showLogViewerDialog() {
-        String logContent = com.example.utils.AirLogger.readLogContent();
+        String logContent = AirLogger.readLogContent();
         if (logContent.isEmpty()) {
             logContent = "No log entries found yet in Download/airlog/air_actions.log";
         }
 
-        new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+        final String finalLogContent = logContent;
+
+        new AlertDialog.Builder(requireContext())
                 .setTitle("AirSignal Action Log")
-                .setMessage(logContent)
+                .setMessage(finalLogContent)
                 .setPositiveButton("OK", null)
+                .setNegativeButton("Copy Log", (dialog, which) -> {
+                    try {
+                        ClipboardManager clipboard = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                        ClipData clip = ClipData.newPlainText("AirSignal Action Log", finalLogContent);
+                        if (clipboard != null) {
+                            clipboard.setPrimaryClip(clip);
+                            Toast.makeText(requireContext(), "Action log copied to clipboard!", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (Exception e) {
+                        Toast.makeText(requireContext(), "Failed to copy log: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    }
+                })
                 .setNeutralButton("Clear", (dialog, which) -> {
-                    com.example.utils.AirLogger.clearLogs();
+                    AirLogger.clearLogs();
                     Toast.makeText(requireContext(), "Logs cleared", Toast.LENGTH_SHORT).show();
                 })
                 .show();
