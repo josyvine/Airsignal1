@@ -1,0 +1,326 @@
+package com.example.activities;
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.os.Build;
+import android.os.Bundle;
+import android.text.InputType;
+import android.text.TextUtils;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
+import android.widget.EditText;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
+import android.widget.Spinner;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.example.adapters.MessageAdapter;
+import com.example.database.DatabaseHelper;
+import com.example.models.Message;
+import com.example.receivers.SmsStatusReceiver;
+import com.example.services.SmsService;
+import com.example.utils.AirLogger;
+import com.example.utils.SimManager;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class ConversationActivity extends AppCompatActivity {
+
+    private static final String TAG = "ConversationActivity";
+
+    private String recipientAddress = "";
+    private RecyclerView recyclerView;
+    private MessageAdapter messageAdapter;
+    private EditText etInput;
+    private Spinner spinnerSimSelector;
+    private ImageButton btnSend;
+    private TextView tvRecipientHeader;
+
+    private List<Message> messageList = new ArrayList<>();
+    private List<SimManager.SimInfo> availableSims = new ArrayList<>();
+
+    private final BroadcastReceiver smsBroadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            AirLogger.i(TAG, "Live SMS broadcast received in ConversationActivity");
+            loadMessages();
+        }
+    };
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        // Extract target recipient from Intent
+        if (getIntent() != null) {
+            if (getIntent().hasExtra("target_recipient")) {
+                recipientAddress = getIntent().getStringExtra("target_recipient");
+            } else if (getIntent().getData() != null) {
+                recipientAddress = getIntent().getData().getSchemeSpecificPart();
+            }
+        }
+
+        if (TextUtils.isEmpty(recipientAddress)) {
+            recipientAddress = "Unknown";
+        }
+
+        // Build Modern Chat Window UI Programmatically (Guarantees zero XML missing resource errors)
+        setupUI();
+
+        // Initialize Chat Adapter
+        messageAdapter = new MessageAdapter(messageList);
+        recyclerView.setAdapter(messageAdapter);
+
+        // Setup SIM Selector
+        setupSimSelector();
+
+        // Load conversation message history
+        loadMessages();
+    }
+
+    private void setupUI() {
+        // Main Root Layout
+        LinearLayout rootLayout = new LinearLayout(this);
+        rootLayout.setOrientation(LinearLayout.VERTICAL);
+        rootLayout.setBackgroundColor(Color.parseColor("#0F172A")); // Modern Dark Theme
+        rootLayout.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        // 1. HEADER TOOLBAR
+        RelativeLayout headerBar = new RelativeLayout(this);
+        headerBar.setBackgroundColor(Color.parseColor("#1E293B"));
+        headerBar.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12));
+
+        ImageButton btnBack = new ImageButton(this);
+        btnBack.setId(View.generateViewId());
+        btnBack.setImageResource(android.R.drawable.ic_menu_revert);
+        btnBack.setBackgroundColor(Color.TRANSPARENT);
+        btnBack.setColorFilter(Color.WHITE);
+        btnBack.setOnClickListener(v -> finish());
+
+        tvRecipientHeader = new TextView(this);
+        tvRecipientHeader.setText(recipientAddress);
+        tvRecipientHeader.setTextColor(Color.WHITE);
+        tvRecipientHeader.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        tvRecipientHeader.setTypeface(null, Typeface.BOLD);
+
+        RelativeLayout.LayoutParams backParams = new RelativeLayout.LayoutParams(dpToPx(36), dpToPx(36));
+        backParams.addRule(RelativeLayout.ALIGN_PARENT_START);
+        backParams.addRule(RelativeLayout.CENTER_VERTICAL);
+
+        RelativeLayout.LayoutParams titleParams = new RelativeLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        titleParams.addRule(RelativeLayout.END_OF, btnBack.getId());
+        titleParams.addRule(RelativeLayout.CENTER_VERTICAL);
+        titleParams.setMarginStart(dpToPx(12));
+
+        headerBar.addView(btnBack, backParams);
+        headerBar.addView(tvRecipientHeader, titleParams);
+
+        // 2. CHAT BUBBLES RECYCLERVIEW
+        recyclerView = new RecyclerView(this);
+        LinearLayoutManager layoutManager = new LinearLayoutManager(this);
+        layoutManager.setStackFromEnd(true); // Auto-scroll to bottom
+        recyclerView.setLayoutManager(layoutManager);
+        recyclerView.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8));
+        recyclerView.setClipToPadding(false);
+
+        LinearLayout.LayoutParams recyclerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1.0f
+        );
+
+        // 3. FOOTER INPUT BAR WITH SIM SELECTOR DROPDOWN
+        LinearLayout footerLayout = new LinearLayout(this);
+        footerLayout.setOrientation(LinearLayout.HORIZONTAL);
+        footerLayout.setGravity(Gravity.CENTER_VERTICAL);
+        footerLayout.setBackgroundColor(Color.parseColor("#1E293B"));
+        footerLayout.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8));
+
+        // Input Box container
+        LinearLayout inputContainer = new LinearLayout(this);
+        inputContainer.setOrientation(LinearLayout.HORIZONTAL);
+        inputContainer.setGravity(Gravity.CENTER_VERTICAL);
+        inputContainer.setBackgroundColor(Color.parseColor("#334155"));
+        inputContainer.setPadding(dpToPx(12), dpToPx(4), dpToPx(4), dpToPx(4));
+
+        LinearLayout.LayoutParams containerParams = new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1.0f
+        );
+
+        // Text Input Field
+        etInput = new EditText(this);
+        etInput.setHint("Type a message...");
+        etInput.setHintTextColor(Color.parseColor("#94A3B8"));
+        etInput.setTextColor(Color.WHITE);
+        etInput.setBackgroundColor(Color.TRANSPARENT);
+        etInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        etInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        etInput.setMaxLines(4);
+
+        LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1.0f
+        );
+
+        // SIM Selector Dropdown (placed inside text box on the extreme right)
+        spinnerSimSelector = new Spinner(this);
+        spinnerSimSelector.setBackgroundColor(Color.parseColor("#0EA5E9"));
+        spinnerSimSelector.setPadding(dpToPx(6), dpToPx(4), dpToPx(6), dpToPx(4));
+
+        LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        spinnerParams.setMarginStart(dpToPx(6));
+
+        inputContainer.addView(etInput, inputParams);
+        inputContainer.addView(spinnerSimSelector, spinnerParams);
+
+        // Send Button
+        btnSend = new ImageButton(this);
+        btnSend.setImageResource(android.R.drawable.ic_menu_send);
+        btnSend.setColorFilter(Color.WHITE);
+        btnSend.setBackgroundColor(Color.parseColor("#0284C7"));
+        btnSend.setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10));
+        btnSend.setOnClickListener(v -> sendMessage());
+
+        LinearLayout.LayoutParams sendBtnParams = new LinearLayout.LayoutParams(dpToPx(44), dpToPx(44));
+        sendBtnParams.setMarginStart(dpToPx(8));
+
+        footerLayout.addView(inputContainer, containerParams);
+        footerLayout.addView(btnSend, sendBtnParams);
+
+        // Add elements to Root
+        rootLayout.addView(headerBar);
+        rootLayout.addView(recyclerView, recyclerParams);
+        rootLayout.addView(footerLayout);
+
+        setContentView(rootLayout);
+    }
+
+    private void setupSimSelector() {
+        availableSims = SimManager.getActiveSims(this);
+
+        ArrayAdapter<SimManager.SimInfo> simAdapter = new ArrayAdapter<SimManager.SimInfo>(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                availableSims
+        ) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getView(position, convertView, parent);
+                view.setTextColor(Color.WHITE);
+                view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                view.setTypeface(null, Typeface.BOLD);
+                return view;
+            }
+
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
+                view.setTextColor(Color.BLACK);
+                return view;
+            }
+        };
+
+        spinnerSimSelector.setAdapter(simAdapter);
+    }
+
+    private void loadMessages() {
+        try {
+            List<Message> loadedMessages = DatabaseHelper.getInstance(this).getMessagesForConversation(recipientAddress);
+            if (loadedMessages != null) {
+                this.messageList = loadedMessages;
+                messageAdapter.updateMessages(messageList);
+
+                if (messageList.size() > 0) {
+                    recyclerView.scrollToPosition(messageList.size() - 1);
+                }
+            }
+        } catch (Exception e) {
+            AirLogger.e(TAG, "Failed loading messages for conversation: " + recipientAddress, e);
+        }
+    }
+
+    private void sendMessage() {
+        String textBody = etInput.getText().toString().trim();
+        if (TextUtils.isEmpty(textBody)) {
+            return;
+        }
+
+        // Get selected SIM subscription ID
+        SimManager.SimInfo selectedSim = (SimManager.SimInfo) spinnerSimSelector.getSelectedItem();
+        int subId = (selectedSim != null) ? selectedSim.getSubId() : -1;
+
+        AirLogger.i(TAG, "Sending message to " + recipientAddress + " via SIM subId=" + subId);
+
+        // Insert message locally
+        Message outgoingMsg = new Message(0, "me", recipientAddress, textBody, System.currentTimeMillis(), "SMS", "PENDING");
+        long messageId = DatabaseHelper.getInstance(this).insertMessage(outgoingMsg);
+
+        // Clear input box
+        etInput.setText("");
+
+        // Refresh conversation UI
+        loadMessages();
+
+        // Dispatch SMS via SmsService with selected SIM slot
+        SmsService.sendSms(this, recipientAddress, textBody, subId, messageId);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        IntentFilter filter = new IntentFilter();
+        filter.addAction("com.example.ACTION_SMS_RECEIVED");
+        filter.addAction(SmsStatusReceiver.ACTION_MESSAGE_STATUS_UPDATED);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(smsBroadcastReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(smsBroadcastReceiver, filter);
+        }
+
+        loadMessages();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        try {
+            unregisterReceiver(smsBroadcastReceiver);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private int dpToPx(int dp) {
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                dp,
+                getResources().getDisplayMetrics()
+        );
+    }
+}
