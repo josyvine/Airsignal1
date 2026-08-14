@@ -3,6 +3,8 @@ package com.example.fragments;
 import android.Manifest;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -37,6 +39,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.R;
 import com.example.activities.ConversationActivity;
 import com.example.adapters.ChatAdapter;
+import com.example.call.CallManager;
+import com.example.database.AppDatabase;
 import com.example.database.DatabaseHelper;
 import com.example.models.Message;
 import com.example.models.User;
@@ -54,8 +58,13 @@ public class ChatFragment extends Fragment {
 
     private RecyclerView rvChats;
     private View layoutEmpty;
+    private EditText etSearchChats;
     private ChatAdapter adapter;
     private DatabaseHelper dbHelper;
+
+    private List<User> masterThreadsList = new ArrayList<>();
+    private List<User> displayedThreadsList = new ArrayList<>();
+    private String currentSearchQuery = "";
 
     private final BroadcastReceiver smsUpdateReceiver = new BroadcastReceiver() {
         @Override
@@ -113,6 +122,30 @@ public class ChatFragment extends Fragment {
 
         rvChats.setLayoutManager(new LinearLayoutManager(requireContext()));
 
+        // Resolve search EditText safely across layout ID definitions
+        etSearchChats = view.findViewById(R.id.etSearchChats);
+        if (etSearchChats == null) etSearchChats = view.findViewById(R.id.etSearchConversations);
+        if (etSearchChats == null) etSearchChats = view.findViewById(R.id.etSearch);
+        if (etSearchChats == null && view instanceof ViewGroup) {
+            etSearchChats = findEditTextRecursively((ViewGroup) view);
+        }
+
+        if (etSearchChats != null) {
+            etSearchChats.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    currentSearchQuery = s != null ? s.toString().trim() : "";
+                    filterConversations(currentSearchQuery);
+                }
+
+                @Override
+                public void afterTextChanged(Editable s) {}
+            });
+        }
+
         loadChats();
 
         view.findViewById(R.id.fabNewChat).setOnClickListener(new View.OnClickListener() {
@@ -123,6 +156,19 @@ public class ChatFragment extends Fragment {
         });
 
         return view;
+    }
+
+    private EditText findEditTextRecursively(ViewGroup root) {
+        for (int i = 0; i < root.getChildCount(); i++) {
+            View child = root.getChildAt(i);
+            if (child instanceof EditText) {
+                return (EditText) child;
+            } else if (child instanceof ViewGroup) {
+                EditText result = findEditTextRecursively((ViewGroup) child);
+                if (result != null) return result;
+            }
+        }
+        return null;
     }
 
     private void loadChats() {
@@ -162,28 +208,147 @@ public class ChatFragment extends Fragment {
                     getActivity().runOnUiThread(() -> {
                         if (!isAdded()) return;
 
-                        if (finalThreads.isEmpty()) {
-                            layoutEmpty.setVisibility(View.VISIBLE);
-                            rvChats.setVisibility(View.GONE);
-                        } else {
-                            layoutEmpty.setVisibility(View.GONE);
-                            rvChats.setVisibility(View.VISIBLE);
-                            adapter = new ChatAdapter(finalThreads, new ChatAdapter.OnChatClickListener() {
-                                @Override
-                                public void onChatClick(User user) {
-                                    if (user != null && user.getPhone() != null) {
-                                        Intent intent = new Intent(requireContext(), ConversationActivity.class);
-                                        intent.putExtra("target_recipient", user.getPhone());
-                                        startActivity(intent);
-                                    }
-                                }
-                            });
-                            rvChats.setAdapter(adapter);
-                        }
+                        masterThreadsList.clear();
+                        masterThreadsList.addAll(finalThreads);
+
+                        filterConversations(currentSearchQuery);
                     });
                 }
             } catch (Exception e) {
                 AirLogger.e("ChatFragment", "Error loading conversation threads", e);
+            }
+        });
+    }
+
+    private void filterConversations(String query) {
+        displayedThreadsList.clear();
+
+        if (query == null || query.isEmpty()) {
+            displayedThreadsList.addAll(masterThreadsList);
+        } else {
+            String lowerQuery = query.toLowerCase().trim();
+            String cleanQuery = cleanNumber(query);
+
+            for (User user : masterThreadsList) {
+                if (user == null) continue;
+
+                boolean matchName = user.getName() != null && user.getName().toLowerCase().contains(lowerQuery);
+                boolean matchPhone = user.getPhone() != null && user.getPhone().toLowerCase().contains(lowerQuery);
+                boolean matchClean = !cleanQuery.isEmpty() && user.getPhone() != null && cleanNumber(user.getPhone()).contains(cleanQuery);
+
+                if (matchName || matchPhone || matchClean) {
+                    displayedThreadsList.add(user);
+                }
+            }
+        }
+
+        if (displayedThreadsList.isEmpty()) {
+            layoutEmpty.setVisibility(View.VISIBLE);
+            rvChats.setVisibility(View.GONE);
+        } else {
+            layoutEmpty.setVisibility(View.GONE);
+            rvChats.setVisibility(View.VISIBLE);
+
+            if (adapter == null) {
+                adapter = new ChatAdapter(
+                        displayedThreadsList,
+                        new ChatAdapter.OnChatClickListener() {
+                            @Override
+                            public void onChatClick(User user) {
+                                if (user != null && user.getPhone() != null) {
+                                    Intent intent = new Intent(requireContext(), ConversationActivity.class);
+                                    intent.putExtra("target_recipient", user.getPhone());
+                                    startActivity(intent);
+                                }
+                            }
+                        },
+                        new ChatAdapter.OnChatLongClickListener() {
+                            @Override
+                            public void onChatLongClick(User user) {
+                                showThreadOptionsDialog(user);
+                            }
+                        }
+                );
+                rvChats.setAdapter(adapter);
+            } else {
+                adapter.updateList(displayedThreadsList);
+            }
+        }
+    }
+
+    private void showThreadOptionsDialog(final User user) {
+        if (user == null || getContext() == null) return;
+
+        final String displayName = (user.getName() != null && !user.getName().trim().isEmpty()) ? user.getName() : user.getPhone();
+        final String phoneNumber = user.getPhone();
+
+        CharSequence[] options = new CharSequence[]{
+                "Copy Phone Number",
+                "Call " + displayName,
+                "Delete Conversation"
+        };
+
+        new AlertDialog.Builder(requireContext())
+                .setTitle(displayName)
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        // Copy Phone Number
+                        ClipboardManager clipboard = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                        ClipData clip = ClipData.newPlainText("Phone Number", phoneNumber);
+                        if (clipboard != null) {
+                            clipboard.setPrimaryClip(clip);
+                            Toast.makeText(requireContext(), "Copied: " + phoneNumber, Toast.LENGTH_SHORT).show();
+                        }
+                    } else if (which == 1) {
+                        // Call Contact
+                        CallManager.placeCall(requireContext(), phoneNumber);
+                    } else if (which == 2) {
+                        // Delete Conversation
+                        confirmDeleteConversation(user);
+                    }
+                })
+                .show();
+    }
+
+    private void confirmDeleteConversation(final User user) {
+        if (user == null || getContext() == null) return;
+        final String displayName = (user.getName() != null && !user.getName().trim().isEmpty()) ? user.getName() : user.getPhone();
+
+        new AlertDialog.Builder(requireContext())
+                .setTitle("Delete Conversation")
+                .setMessage("Are you sure you want to delete all messages with " + displayName + "?")
+                .setPositiveButton("Delete", (dialog, which) -> {
+                    deleteConversation(user.getPhone());
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void deleteConversation(final String phoneNumber) {
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                // Delete from DatabaseHelper
+                dbHelper.deleteMessagesByNumber(phoneNumber);
+
+                // Delete from Room Database
+                try {
+                    AppDatabase roomDb = AppDatabase.getInstance(requireContext());
+                    if (roomDb != null && roomDb.messageDao() != null) {
+                        roomDb.messageDao().deleteByRecipient(phoneNumber);
+                    }
+                } catch (Exception ignored) {
+                }
+
+                AirLogger.i("ChatFragment", "Deleted conversation thread for: " + phoneNumber);
+
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> {
+                        Toast.makeText(requireContext(), "Conversation deleted", Toast.LENGTH_SHORT).show();
+                        loadChats();
+                    });
+                }
+            } catch (Exception e) {
+                AirLogger.e("ChatFragment", "Failed to delete conversation for " + phoneNumber, e);
             }
         });
     }
