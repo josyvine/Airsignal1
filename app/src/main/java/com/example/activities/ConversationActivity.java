@@ -368,11 +368,11 @@ public class ConversationActivity extends AppCompatActivity {
                 // 1. Delete from SQLite DatabaseHelper
                 DatabaseHelper.getInstance(ConversationActivity.this).deleteMessage(message.getId());
 
-                // 2. Delete from Room AppDatabase
+                // 2. Delete from Room AppDatabase using deleteMessageById
                 try {
                     AppDatabase db = AppDatabase.getInstance(ConversationActivity.this);
                     if (db != null && db.messageDao() != null) {
-                        db.messageDao().deleteById(message.getId());
+                        db.messageDao().deleteMessageById(message.getId());
                     }
                 } catch (Exception ignored) {
                 }
@@ -398,10 +398,10 @@ public class ConversationActivity extends AppCompatActivity {
         // Update status to SENDING in SQLite
         DatabaseHelper.getInstance(this).updateMessageStatus(message.getId(), "SENDING");
 
-        // Update status in Room DB
+        // Update status in Room DB using updateStatus
         new Thread(() -> {
             try {
-                AppDatabase.getInstance(ConversationActivity.this).messageDao().updateMessageStatus(message.getId(), "SENDING");
+                AppDatabase.getInstance(ConversationActivity.this).messageDao().updateStatus(message.getId(), "SENDING");
             } catch (Exception ignored) {
             }
         }).start();
