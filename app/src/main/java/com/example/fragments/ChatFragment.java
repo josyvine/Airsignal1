@@ -122,12 +122,22 @@ public class ChatFragment extends Fragment {
 
         rvChats.setLayoutManager(new LinearLayoutManager(requireContext()));
 
-        // Resolve search EditText safely across layout ID definitions
-        etSearchChats = view.findViewById(R.id.etSearchChats);
-        if (etSearchChats == null) etSearchChats = view.findViewById(R.id.etSearchConversations);
-        if (etSearchChats == null) etSearchChats = view.findViewById(R.id.etSearch);
-        if (etSearchChats == null && view instanceof ViewGroup) {
+        // Resolve search EditText dynamically across XML layouts without hardcoded compile-time symbol dependency
+        if (view instanceof ViewGroup) {
             etSearchChats = findEditTextRecursively((ViewGroup) view);
+        }
+        if (etSearchChats == null && getContext() != null) {
+            String pkg = requireContext().getPackageName();
+            int id1 = getResources().getIdentifier("etSearchChats", "id", pkg);
+            if (id1 != 0) etSearchChats = view.findViewById(id1);
+            if (etSearchChats == null) {
+                int id2 = getResources().getIdentifier("etSearchConversations", "id", pkg);
+                if (id2 != 0) etSearchChats = view.findViewById(id2);
+            }
+            if (etSearchChats == null) {
+                int id3 = getResources().getIdentifier("etSearch", "id", pkg);
+                if (id3 != 0) etSearchChats = view.findViewById(id3);
+            }
         }
 
         if (etSearchChats != null) {
@@ -330,11 +340,11 @@ public class ChatFragment extends Fragment {
                 // Delete from DatabaseHelper
                 dbHelper.deleteMessagesByNumber(phoneNumber);
 
-                // Delete from Room Database
+                // Delete from Room Database using deleteConversation method
                 try {
                     AppDatabase roomDb = AppDatabase.getInstance(requireContext());
                     if (roomDb != null && roomDb.messageDao() != null) {
-                        roomDb.messageDao().deleteByRecipient(phoneNumber);
+                        roomDb.messageDao().deleteConversation(phoneNumber);
                     }
                 } catch (Exception ignored) {
                 }
