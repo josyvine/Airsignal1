@@ -17,22 +17,39 @@ import java.util.List;
 public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.ViewHolder> {
 
     private List<User> userList;
-    private OnChatClickListener listener;
+    private OnChatClickListener clickListener;
+    private OnChatLongClickListener longClickListener;
 
     public interface OnChatClickListener {
         void onChatClick(User user);
     }
 
-    public ChatAdapter(List<User> userList, OnChatClickListener listener) {
-        this.userList = (userList != null) ? userList : new ArrayList<>();
-        this.listener = listener;
+    public interface OnChatLongClickListener {
+        void onChatLongClick(User user);
+    }
+
+    public ChatAdapter(List<User> userList, OnChatClickListener clickListener) {
+        this.userList = (userList != null) ? new ArrayList<>(userList) : new ArrayList<>();
+        this.clickListener = clickListener;
+    }
+
+    public ChatAdapter(List<User> userList, OnChatClickListener clickListener, OnChatLongClickListener longClickListener) {
+        this.userList = (userList != null) ? new ArrayList<>(userList) : new ArrayList<>();
+        this.clickListener = clickListener;
+        this.longClickListener = longClickListener;
+    }
+
+    public void setOnChatLongClickListener(OnChatLongClickListener longClickListener) {
+        this.longClickListener = longClickListener;
+    }
+
+    public void updateList(List<User> newUsers) {
+        this.userList = (newUsers != null) ? new ArrayList<>(newUsers) : new ArrayList<>();
+        notifyDataSetChanged();
     }
 
     public void updateUserList(List<User> newUsers) {
-        if (newUsers != null) {
-            this.userList = new ArrayList<>(newUsers);
-            notifyDataSetChanged();
-        }
+        updateList(newUsers);
     }
 
     @NonNull
@@ -57,9 +74,20 @@ public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.ViewHolder> {
             holder.itemView.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    if (listener != null) {
-                        listener.onChatClick(user);
+                    if (clickListener != null) {
+                        clickListener.onChatClick(user);
                     }
+                }
+            });
+
+            holder.itemView.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    if (longClickListener != null) {
+                        longClickListener.onChatLongClick(user);
+                        return true;
+                    }
+                    return false;
                 }
             });
         }
