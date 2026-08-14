@@ -105,11 +105,15 @@
             android:name=".activities.DialerActivity"
             android:exported="true"
             android:label="AirSignal Dialer"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="stateHidden|adjustResize"
             android:theme="@style/Theme.AirSignal">
             <intent-filter>
                 <action android:name="android.intent.action.DIAL" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="tel" />
+                <data android:scheme="voicemail" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.DIAL" />
@@ -117,10 +121,15 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
-                <action android:name="android.intent.action.CALL_BUTTON" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="tel" />
+                <data android:scheme="voicemail" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.CALL_BUTTON" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
             </intent-filter>
         </activity>
 
