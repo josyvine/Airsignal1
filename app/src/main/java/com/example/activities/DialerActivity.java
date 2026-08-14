@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
+import android.net.Uri;
 import android.os.Bundle;
 import android.provider.CallLog;
 import android.provider.ContactsContract;
@@ -115,6 +116,70 @@ public class DialerActivity extends AppCompatActivity {
         });
 
         updateNumberDisplay();
+
+        // Process incoming intent data from Google Search, Chrome, or external apps
+        handleIncomingIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingIntent(intent);
+    }
+
+    private void handleIncomingIntent(Intent intent) {
+        if (intent == null) return;
+
+        String number = null;
+        Uri data = intent.getData();
+
+        if (data != null) {
+            String scheme = data.getScheme();
+            if ("tel".equalsIgnoreCase(scheme) || "voicemail".equalsIgnoreCase(scheme)) {
+                number = data.getSchemeSpecificPart();
+            } else {
+                String fullData = data.toString();
+                if (fullData.startsWith("tel:")) {
+                    number = fullData.substring(4);
+                } else {
+                    number = fullData;
+                }
+            }
+        }
+
+        if (number == null || number.trim().isEmpty()) {
+            if (intent.hasExtra(Intent.EXTRA_PHONE_NUMBER)) {
+                number = intent.getStringExtra(Intent.EXTRA_PHONE_NUMBER);
+            } else if (intent.hasExtra("phoneNumber")) {
+                number = intent.getStringExtra("phoneNumber");
+            } else if (intent.hasExtra("number")) {
+                number = intent.getStringExtra("number");
+            } else if (intent.hasExtra("phone")) {
+                number = intent.getStringExtra("phone");
+            }
+        }
+
+        if (number != null && !number.trim().isEmpty()) {
+            number = Uri.decode(number).trim();
+
+            StringBuilder cleanNumber = new StringBuilder();
+            for (char c : number.toCharArray()) {
+                if (Character.isDigit(c) || c == '+' || c == '*' || c == '#') {
+                    cleanNumber.append(c);
+                }
+            }
+
+            String finalNumber = cleanNumber.length() > 0 ? cleanNumber.toString() : number;
+
+            numberBuilder.setLength(0);
+            numberBuilder.append(finalNumber);
+            updateNumberDisplay();
+
+            if (panelContacts != null) panelContacts.setVisibility(View.GONE);
+            if (panelCallHistory != null) panelCallHistory.setVisibility(View.GONE);
+            if (gridDialpad != null) gridDialpad.setVisibility(View.VISIBLE);
+        }
     }
 
     private void updateNumberDisplay() {
