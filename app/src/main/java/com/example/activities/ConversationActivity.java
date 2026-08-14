@@ -1,6 +1,9 @@
 package com.example.activities;
 
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -21,6 +24,7 @@ import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -36,9 +40,12 @@ import com.example.services.SmsService;
 import com.example.utils.AirLogger;
 import com.example.utils.SimManager;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class ConversationActivity extends AppCompatActivity {
 
@@ -83,8 +90,18 @@ public class ConversationActivity extends AppCompatActivity {
         // Build Modern Chat Window UI Programmatically (Guarantees zero XML missing resource errors)
         setupUI();
 
-        // Initialize Chat Adapter
-        messageAdapter = new MessageAdapter(messageList);
+        // Initialize Chat Adapter with Click & Long-Click Action Listeners
+        messageAdapter = new MessageAdapter(messageList, new MessageAdapter.OnMessageActionListener() {
+            @Override
+            public void onMessageClick(Message message, int position) {
+                showMessageOptionsDialog(message);
+            }
+
+            @Override
+            public void onMessageLongClick(Message message, int position) {
+                showMessageOptionsDialog(message);
+            }
+        });
         recyclerView.setAdapter(messageAdapter);
 
         // Setup SIM Selector
@@ -289,6 +306,128 @@ public class ConversationActivity extends AppCompatActivity {
         };
 
         spinnerSimSelector.setAdapter(simAdapter);
+    }
+
+    private void showMessageOptionsDialog(final Message message) {
+        if (message == null) return;
+
+        List<String> options = new ArrayList<>();
+        options.add("Copy Text");
+
+        boolean isFailed = "FAILED".equalsIgnoreCase(message.getStatus()) || "ERROR".equalsIgnoreCase(message.getStatus());
+        boolean isOutgoing = "me".equalsIgnoreCase(message.getSender()) || "OUTGOING".equalsIgnoreCase(message.getType());
+
+        if (isFailed || isOutgoing) {
+            options.add("Resend Message");
+        }
+
+        options.add("Delete Message");
+        options.add("Message Details");
+
+        final CharSequence[] items = options.toArray(new CharSequence[0]);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Message Options")
+                .setItems(items, (dialog, which) -> {
+                    String selected = items[which].toString();
+                    if ("Copy Text".equals(selected)) {
+                        copyMessageText(message.getMessage());
+                    } else if ("Resend Message".equals(selected)) {
+                        retrySendMessage(message);
+                    } else if ("Delete Message".equals(selected)) {
+                        confirmDeleteMessage(message);
+                    } else if ("Message Details".equals(selected)) {
+                        showMessageDetails(message);
+                    }
+                })
+                .show();
+    }
+
+    private void copyMessageText(String text) {
+        if (text == null) return;
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("Message Text", text);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(clip);
+            Toast.makeText(this, "Message copied to clipboard", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void confirmDeleteMessage(final Message message) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete Message")
+                .setMessage("Delete this message?")
+                .setPositiveButton("Delete", (dialog, which) -> deleteIndividualMessage(message))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void deleteIndividualMessage(final Message message) {
+        new Thread(() -> {
+            try {
+                // 1. Delete from SQLite DatabaseHelper
+                DatabaseHelper.getInstance(ConversationActivity.this).deleteMessage(message.getId());
+
+                // 2. Delete from Room AppDatabase
+                try {
+                    AppDatabase db = AppDatabase.getInstance(ConversationActivity.this);
+                    if (db != null && db.messageDao() != null) {
+                        db.messageDao().deleteById(message.getId());
+                    }
+                } catch (Exception ignored) {
+                }
+
+                AirLogger.i(TAG, "Deleted individual message ID=" + message.getId());
+
+                runOnUiThread(() -> {
+                    Toast.makeText(ConversationActivity.this, "Message deleted", Toast.LENGTH_SHORT).show();
+                    loadMessages();
+                });
+            } catch (Exception e) {
+                AirLogger.e(TAG, "Failed deleting message ID=" + message.getId(), e);
+            }
+        }).start();
+    }
+
+    private void retrySendMessage(final Message message) {
+        if (message == null || TextUtils.isEmpty(message.getMessage())) return;
+
+        SimManager.SimInfo selectedSim = (SimManager.SimInfo) spinnerSimSelector.getSelectedItem();
+        int subId = (selectedSim != null) ? selectedSim.getSubId() : -1;
+
+        // Update status to SENDING in SQLite
+        DatabaseHelper.getInstance(this).updateMessageStatus(message.getId(), "SENDING");
+
+        // Update status in Room DB
+        new Thread(() -> {
+            try {
+                AppDatabase.getInstance(ConversationActivity.this).messageDao().updateMessageStatus(message.getId(), "SENDING");
+            } catch (Exception ignored) {
+            }
+        }).start();
+
+        loadMessages();
+
+        // Re-dispatch SMS via SmsService
+        SmsService.sendSms(this, recipientAddress, message.getMessage(), subId, message.getId());
+        Toast.makeText(this, "Resending message...", Toast.LENGTH_SHORT).show();
+    }
+
+    private void showMessageDetails(final Message message) {
+        SimpleDateFormat sdf = new SimpleDateFormat("MMM dd, yyyy hh:mm:ss a", Locale.getDefault());
+        String dateStr = sdf.format(new Date(message.getTimestamp()));
+
+        String details = "Type: " + message.getType() + "\n" +
+                "Status: " + message.getStatus() + "\n" +
+                "Sender: " + message.getSender() + "\n" +
+                "Recipient: " + message.getReceiver() + "\n" +
+                "Time: " + dateStr;
+
+        new AlertDialog.Builder(this)
+                .setTitle("Message Details")
+                .setMessage(details)
+                .setPositiveButton("OK", null)
+                .show();
     }
 
     private void loadMessages() {
