@@ -23,9 +23,24 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
     private static final int TYPE_RECEIVED = 2;
 
     private List<Message> messageList;
+    private OnMessageActionListener actionListener;
+
+    public interface OnMessageActionListener {
+        void onMessageClick(Message message, int position);
+        void onMessageLongClick(Message message, int position);
+    }
 
     public MessageAdapter(List<Message> messageList) {
-        this.messageList = (messageList != null) ? messageList : new ArrayList<>();
+        this.messageList = (messageList != null) ? new ArrayList<>(messageList) : new ArrayList<>();
+    }
+
+    public MessageAdapter(List<Message> messageList, OnMessageActionListener listener) {
+        this.messageList = (messageList != null) ? new ArrayList<>(messageList) : new ArrayList<>();
+        this.actionListener = listener;
+    }
+
+    public void setOnMessageActionListener(OnMessageActionListener listener) {
+        this.actionListener = listener;
     }
 
     public void updateMessages(List<Message> newMessages) {
@@ -87,6 +102,26 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
             vh.tvBody.setText(msg.getMessage());
             vh.tvTime.setText(timeStr);
         }
+
+        holder.itemView.setOnClickListener(v -> {
+            if (actionListener != null) {
+                int currentPos = holder.getAdapterPosition();
+                if (currentPos != RecyclerView.NO_POSITION && currentPos < messageList.size()) {
+                    actionListener.onMessageClick(messageList.get(currentPos), currentPos);
+                }
+            }
+        });
+
+        holder.itemView.setOnLongClickListener(v -> {
+            if (actionListener != null) {
+                int currentPos = holder.getAdapterPosition();
+                if (currentPos != RecyclerView.NO_POSITION && currentPos < messageList.size()) {
+                    actionListener.onMessageLongClick(messageList.get(currentPos), currentPos);
+                    return true;
+                }
+            }
+            return false;
+        });
     }
 
     @Override
