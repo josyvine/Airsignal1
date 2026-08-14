@@ -2,6 +2,7 @@ package com.example.database;
 
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
@@ -163,10 +164,51 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         notifyMessageChanged();
     }
 
+    public int deleteMessage(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        int rowsDeleted = db.delete(TABLE_MESSAGES, KEY_ID + "=?", new String[]{String.valueOf(id)});
+        if (rowsDeleted > 0) {
+            notifyMessageChanged();
+        }
+        return rowsDeleted;
+    }
+
+    public int deleteMessagesByNumber(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.trim().isEmpty()) return 0;
+        SQLiteDatabase db = this.getWritableDatabase();
+
+        String raw = phoneNumber.trim();
+        String cleaned = raw.replaceAll("[^0-9]", "");
+        if (cleaned.length() > 10) {
+            cleaned = cleaned.substring(cleaned.length() - 10);
+        }
+
+        int rowsDeleted = db.delete(
+                TABLE_MESSAGES,
+                KEY_MSG_SENDER + "=? OR " + KEY_MSG_RECEIVER + "=? OR " +
+                KEY_MSG_SENDER + " LIKE ? OR " + KEY_MSG_RECEIVER + " LIKE ?",
+                new String[]{raw, raw, "%" + cleaned, "%" + cleaned}
+        );
+
+        if (rowsDeleted > 0) {
+            notifyMessageChanged();
+        }
+        return rowsDeleted;
+    }
+
+    public int deleteAllMessages() {
+        SQLiteDatabase db = this.getWritableDatabase();
+        int rowsDeleted = db.delete(TABLE_MESSAGES, null, null);
+        if (rowsDeleted > 0) {
+            notifyMessageChanged();
+        }
+        return rowsDeleted;
+    }
+
     private void notifyMessageChanged() {
         if (mContext != null) {
             try {
-                android.content.Intent intent = new android.content.Intent("com.example.ACTION_SMS_RECEIVED");
+                Intent intent = new Intent("com.example.ACTION_SMS_RECEIVED");
                 intent.setPackage(mContext.getPackageName());
                 mContext.sendBroadcast(intent);
             } catch (Exception ignored) {
@@ -213,6 +255,16 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return list;
     }
 
+    public long insertUser(User user) {
+        if (user == null) return -1;
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(KEY_USER_NAME, user.getName());
+        values.put(KEY_USER_PHONE, user.getPhone());
+        values.put(KEY_USER_PHOTO, user.getPhoto());
+        return db.insertWithOnConflict(TABLE_USERS, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
     public List<CallLogItem> getAllCalls() {
         List<CallLogItem> list = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
@@ -240,5 +292,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(KEY_CALL_DURATION, item.getDuration());
         values.put(KEY_CALL_TIME, item.getTimestamp());
         return db.insert(TABLE_CALLS, null, values);
+    }
+
+    public int deleteCall(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        return db.delete(TABLE_CALLS, KEY_ID + "=?", new String[]{String.valueOf(id)});
     }
 }
