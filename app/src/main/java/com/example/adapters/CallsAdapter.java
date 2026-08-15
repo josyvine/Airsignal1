@@ -13,6 +13,7 @@ import com.example.R;
 import com.example.models.CallLogItem;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -23,16 +24,40 @@ public class CallsAdapter extends RecyclerView.Adapter<CallsAdapter.ViewHolder> 
         void onCallClick(CallLogItem item);
     }
 
+    public interface OnCallItemLongClickListener {
+        void onCallLongClick(CallLogItem item);
+    }
+
     private List<CallLogItem> callList;
     private OnCallItemClickListener listener;
+    private OnCallItemLongClickListener longClickListener;
 
     public CallsAdapter(List<CallLogItem> callList) {
-        this.callList = callList;
+        this.callList = (callList != null) ? callList : new ArrayList<>();
     }
 
     public CallsAdapter(List<CallLogItem> callList, OnCallItemClickListener listener) {
-        this.callList = callList;
+        this.callList = (callList != null) ? callList : new ArrayList<>();
         this.listener = listener;
+    }
+
+    public CallsAdapter(List<CallLogItem> callList, OnCallItemClickListener listener, OnCallItemLongClickListener longClickListener) {
+        this.callList = (callList != null) ? callList : new ArrayList<>();
+        this.listener = listener;
+        this.longClickListener = longClickListener;
+    }
+
+    public void setOnCallItemClickListener(OnCallItemClickListener listener) {
+        this.listener = listener;
+    }
+
+    public void setOnCallItemLongClickListener(OnCallItemLongClickListener longClickListener) {
+        this.longClickListener = longClickListener;
+    }
+
+    public void updateList(List<CallLogItem> newCalls) {
+        this.callList = (newCalls != null) ? new ArrayList<>(newCalls) : new ArrayList<>();
+        notifyDataSetChanged();
     }
 
     @NonNull
@@ -45,6 +70,7 @@ public class CallsAdapter extends RecyclerView.Adapter<CallsAdapter.ViewHolder> 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         CallLogItem item = callList.get(position);
+        if (item == null) return;
 
         String typeStr = item.getType();
         String displayType = typeStr;
@@ -64,7 +90,10 @@ public class CallsAdapter extends RecyclerView.Adapter<CallsAdapter.ViewHolder> 
             colorRes = 0xFF00E5FF;
         }
 
-        holder.tvNumber.setText(item.getNumber() + " (" + displayType + ")");
+        // Show Contact Name if saved; otherwise show raw number
+        String mainTitle = item.hasContactName() ? item.getName() : item.getNumber();
+        holder.tvNumber.setText(mainTitle + " (" + displayType + ")");
+
         if (holder.imgCallType != null) {
             holder.imgCallType.setColorFilter(colorRes);
         }
@@ -78,11 +107,19 @@ public class CallsAdapter extends RecyclerView.Adapter<CallsAdapter.ViewHolder> 
                 listener.onCallClick(item);
             }
         });
+
+        holder.itemView.setOnLongClickListener(v -> {
+            if (longClickListener != null) {
+                longClickListener.onCallLongClick(item);
+                return true;
+            }
+            return false;
+        });
     }
 
     @Override
     public int getItemCount() {
-        return callList.size();
+        return (callList != null) ? callList.size() : 0;
     }
 
     public static class ViewHolder extends RecyclerView.ViewHolder {
